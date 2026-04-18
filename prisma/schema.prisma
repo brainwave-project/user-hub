@@ -1,0 +1,24 @@
+// user-hub Prisma schema
+// Schema: user_management (matches postgres/init/02-user-management.sql)
+// Role:   userhub_app (least-privilege — no access to doc schema)
+//
+// Run:  npx prisma migrate dev --name init
+//       npx prisma generate
+//
+// Models are added when UserHub implementation begins.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// TODO: Add models
+// - User          (user_management.users)
+// - Role          (user_management.roles)
+// - UserRole      (user_management.user_roles)
+// - UserEvent     (user_management.user_events — outbox)
+// - UserPreference (user_management.user_preferences)
