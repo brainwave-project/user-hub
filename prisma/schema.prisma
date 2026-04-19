@@ -1,24 +1,107 @@
 // user-hub Prisma schema
-// Schema: user_management (matches postgres/init/02-user-management.sql)
-// Role:   userhub_app (least-privilege — no access to doc schema)
+// Schema: user_management  |  Role: userhub_app
+// Mirrors postgres/init/02-user-management.sql exactly.
 //
-// Run:  npx prisma migrate dev --name init
-//       npx prisma generate
+// NOTE: IDs are SERIAL (Int) in SQL — converted to string in the repository mapper.
+//       Keycloak IDs are UUID stored as String (CITEXT for email, UUID for keycloak_id).
 //
-// Models are added when UserHub implementation begins.
+// Run:   npx prisma migrate dev --name init    (first time)
+//        npx prisma generate                   (after schema changes)
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["user_management"]
 }
 
-// TODO: Add models
-// - User          (user_management.users)
-// - Role          (user_management.roles)
-// - UserRole      (user_management.user_roles)
-// - UserEvent     (user_management.user_events — outbox)
-// - UserPreference (user_management.user_preferences)
+// ---------------------------------------------------------------------------
+// User — core business record (no passwords, no tokens — Keycloak owns those)
+// ---------------------------------------------------------------------------
+model User {
+  id            Int      @id @default(autoincrement())
+  keycloakId    String   @unique @map("keycloak_id") @db.Uuid
+  email         String   @unique
+  fullName      String?  @map("full_name") @db.VarChar(255)
+  displayName   String?  @map("display_name") @db.VarChar(100)
+  accountStatus String   @default("pending_identity") @map("account_status") @db.VarChar(20)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  userRoles   UserRole[]
+  preferences UserPreference[]
+
+  @@map("users")
+  @@schema("user_management")
+}
+
+// ---------------------------------------------------------------------------
+// Role — coarse platform roles (ADMIN, EDITOR, VIEWER) — seeded from SQL
+// ---------------------------------------------------------------------------
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  userRoles UserRole[]
+
+  @@map("roles")
+  @@schema("user_management")
+}
+
+// ---------------------------------------------------------------------------
+// UserRole — junction table: user ↔ role assignment
+// ---------------------------------------------------------------------------
+model UserRole {
+  userId     Int      @map("user_id")
+  roleId     Int      @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  assignedBy Int?     @map("assigned_by")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+  @@schema("user_management")
+}
+
+// ---------------------------------------------------------------------------
+// UserEvent — transactional outbox (written atomically with business changes)
+// user_id has NO FK on purpose — event must survive user deletion.
+// processed_at = NULL → pending. Non-null → processed. error non-null → failed.
+// ---------------------------------------------------------------------------
+model UserEvent {
+  id          Int       @id @default(autoincrement())
+  eventType   String    @map("event_type") @db.VarChar(50)
+  userId      Int       @map("user_id")
+  keycloakId  String    @map("keycloak_id") @db.Uuid
+  payload     Json?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+  error       String?   @db.Text
+
+  @@map("user_events")
+  @@schema("user_management")
+}
+
+// ---------------------------------------------------------------------------
+// UserPreference — key-value store per user
+// ---------------------------------------------------------------------------
+model UserPreference {
+  userId    Int      @map("user_id")
+  key       String   @db.VarChar(50)
+  value     String?  @db.Text
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
+  @@map("user_preferences")
+  @@schema("user_management")
+}

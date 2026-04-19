@@ -1,14 +1,119 @@
+import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
 import type { UserService } from '../../../application/user.service.js';
+import { AccountStatus } from '../../../domain/user.js';
+import { Role } from '../../../domain/role.js';
+import { AppError } from '@brainwave-project/core';
+
+// ---------------------------------------------------------------------------
+// Zod schemas
+// ---------------------------------------------------------------------------
+
+const CreateUserSchema = z.object({
+  keycloakId: z.string().uuid('keycloakId must be a UUID'),
+  email:      z.string().email('email must be a valid email address'),
+});
+
+const StatusSchema = z.object({
+  status: z.enum(
+    [AccountStatus.ACTIVE, AccountStatus.SUSPENDED, AccountStatus.DISABLED],
+    { errorMap: () => ({ message: `status must be one of: active, suspended, disabled` }) },
+  ),
+});
+
+const AssignRolesSchema = z.object({
+  roles: z.array(z.nativeEnum(Role), { required_error: 'roles array is required' })
+           .min(1, 'at least one role is required'),
+});
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
 
 /**
- * HTTP handlers for /api/users routes.
- * Each handler delegates to UserService — no business logic here.
- * TODO: implement when UserService methods are built out.
+ * @swagger
+ * components:
+ *   schemas:
+ *     User:
+ *       type: object
+ *       properties:
+ *         id:            { type: string, example: "42" }
+ *         keycloakId:    { type: string, format: uuid }
+ *         email:         { type: string, format: email }
+ *         accountStatus:
+ *           type: string
+ *           enum: [pending_identity, active, suspended, disabled, failed]
+ *         roles:
+ *           type: array
+ *           items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+ *         createdAt: { type: string, format: date-time }
+ *         updatedAt: { type: string, format: date-time }
+ *     CreateUserRequest:
+ *       type: object
+ *       required: [keycloakId, email]
+ *       properties:
+ *         keycloakId: { type: string, format: uuid }
+ *         email:      { type: string, format: email }
+ *     StatusRequest:
+ *       type: object
+ *       required: [status]
+ *       properties:
+ *         status:
+ *           type: string
+ *           enum: [active, suspended, disabled]
+ *     AssignRolesRequest:
+ *       type: object
+ *       required: [roles]
+ *       properties:
+ *         roles:
+ *           type: array
+ *           items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+ *     ErrorResponse:
+ *       type: object
+ *       properties:
+ *         error:
+ *           type: object
+ *           properties:
+ *             code:    { type: string }
+ *             message: { type: string }
+ *   securitySchemes:
+ *     BearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ *       description: >
+ *         JWT issued by Keycloak via AuthHub. Kong validates the token and
+ *         injects X-User-Id and X-User-Roles headers before forwarding the request.
+ *         Services trust the injected headers — they never parse the JWT themselves.
  */
 export function createUserHandlers(service: UserService) {
   return {
-    /** GET /api/users/:id */
+
+    /**
+     * @swagger
+     * /api/users/{id}:
+     *   get:
+     *     summary: Get user by ID
+     *     tags: [Users]
+     *     security: [{ BearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema: { type: string }
+     *         description: Internal user ID
+     *     responses:
+     *       200:
+     *         description: User found
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/User' }
+     *       404:
+     *         description: User not found
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     */
     getUser: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         const user = await service.getUser(req.params['id']!);
@@ -18,42 +123,180 @@ export function createUserHandlers(service: UserService) {
       }
     },
 
-    /** POST /api/users — triggered by Keycloak user-registration webhook */
+    /**
+     * @swagger
+     * /api/users:
+     *   post:
+     *     summary: Register a new user (called after Keycloak identity provisioned)
+     *     tags: [Users]
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema: { $ref: '#/components/schemas/CreateUserRequest' }
+     *           example:
+     *             keycloakId: "c56a4180-65aa-42ec-a945-5fd21dec0538"
+     *             email: "ahmad@brainwave.io"
+     *     responses:
+     *       201:
+     *         description: User registered, starts in pending_identity state
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/User' }
+     *       409:
+     *         description: Email or Keycloak identity already exists
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     *       422:
+     *         description: Validation error
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     */
     createUser: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
-        // TODO: validate body with Zod schema
-        const user = await service.createUser(req.body);
+        const parsed = CreateUserSchema.safeParse(req.body);
+        if (!parsed.success) {
+          next(AppError.validationError('Invalid request body', { issues: parsed.error.issues }));
+          return;
+        }
+        const user = await service.createUser(parsed.data);
         res.status(201).json(user);
       } catch (err) {
         next(err);
       }
     },
 
-    /** PATCH /api/users/:id/activate */
-    activateUser: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    /**
+     * @swagger
+     * /api/users/{id}/status:
+     *   patch:
+     *     summary: Transition account status
+     *     description: >
+     *       Enforces the state machine:
+     *       pending_identity → active | failed,
+     *       active → suspended | disabled,
+     *       suspended → active | disabled.
+     *       DISABLED and FAILED are terminal states.
+     *     tags: [Users]
+     *     security: [{ BearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema: { type: string }
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema: { $ref: '#/components/schemas/StatusRequest' }
+     *           example: { status: "active" }
+     *     responses:
+     *       200:
+     *         description: Status transitioned successfully
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/User' }
+     *       409:
+     *         description: Invalid state transition
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     *       404:
+     *         description: User not found
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     */
+    updateStatus: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
-        const user = await service.activateUser(req.params['id']!);
+        const parsed = StatusSchema.safeParse(req.body);
+        if (!parsed.success) {
+          next(AppError.validationError('Invalid status', { issues: parsed.error.issues }));
+          return;
+        }
+        const user = await service.transitionStatus(req.params['id']!, parsed.data.status as AccountStatus);
         res.status(200).json(user);
       } catch (err) {
         next(err);
       }
     },
 
-    /** PATCH /api/users/:id/suspend */
-    suspendUser: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    /**
+     * @swagger
+     * /api/users/{id}:
+     *   delete:
+     *     summary: Soft-delete user (transitions to disabled)
+     *     description: >
+     *       Moves the account to DISABLED state. The DB row is retained for audit purposes.
+     *       GDPR erasure of PII is handled by a separate background process.
+     *     tags: [Users]
+     *     security: [{ BearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema: { type: string }
+     *     responses:
+     *       200:
+     *         description: User disabled
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/User' }
+     *       409:
+     *         description: Already disabled or invalid state transition
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     */
+    deleteUser: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
-        const user = await service.suspendUser(req.params['id']!);
+        const user = await service.deleteUser(req.params['id']!);
         res.status(200).json(user);
       } catch (err) {
         next(err);
       }
     },
 
-    /** PATCH /api/users/:id/roles */
+    /**
+     * @swagger
+     * /api/users/{id}/roles:
+     *   patch:
+     *     summary: Replace all role assignments for a user
+     *     tags: [Users]
+     *     security: [{ BearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema: { type: string }
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema: { $ref: '#/components/schemas/AssignRolesRequest' }
+     *           example: { roles: ["EDITOR"] }
+     *     responses:
+     *       200:
+     *         description: Roles updated
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/User' }
+     *       422:
+     *         description: Validation error (unknown roles)
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     */
     assignRoles: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
-        // TODO: validate body.roles with Zod
-        const user = await service.assignRoles(req.params['id']!, req.body.roles);
+        const parsed = AssignRolesSchema.safeParse(req.body);
+        if (!parsed.success) {
+          next(AppError.validationError('Invalid roles payload', { issues: parsed.error.issues }));
+          return;
+        }
+        const user = await service.assignRoles(req.params['id']!, parsed.data.roles);
         res.status(200).json(user);
       } catch (err) {
         next(err);
