@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "nodemon --watch src --ext ts --exec node --loader ts-node/esm src/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
     "test": "echo \"No tests specified\" && exit 0",
     "lint": "eslint . --ext .ts",
     "db:generate": "prisma generate",
@@ -15,7 +15,7 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@brainwave-project/core": "1.0.0",
+    "@brainwave-project/core": "file:../core",
     "@grpc/grpc-js": "^1.12.4",
     "@grpc/proto-loader": "^0.7.13",
     "@prisma/client": "^5.14.0",
@@ -34,7 +34,7 @@
     "eslint": "^8.0.0",
     "nodemon": "^3.1.0",
     "prisma": "^5.14.0",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.16.0",
     "typescript": "^5.2.0"
   },
   "repository": {
