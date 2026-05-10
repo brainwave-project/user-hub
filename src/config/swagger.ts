@@ -28,7 +28,12 @@ const options: swaggerJSDoc.Options = {
     security: [{ BearerAuth: [] }],
   },
   // Scan handlers — JSDoc @swagger blocks live here
-  apis: ['./src/transport/http/handlers/*.ts', './src/transport/http/router.ts'],
+  apis: [
+    './src/transport/http/handlers/*.ts',
+    './src/transport/http/router.ts',
+    './dist/transport/http/handlers/*.js',
+    './dist/transport/http/router.js',
+  ],
 };
 
 const swaggerSpec = swaggerJSDoc(options);
