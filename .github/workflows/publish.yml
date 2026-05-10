@@ -47,7 +47,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            NPM_TOKEN=${{ secrets.NPM_TOKEN }}
+            NPM_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
 
