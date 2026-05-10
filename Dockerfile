@@ -5,13 +5,13 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY .npmrc package*.json ./
-RUN npm ci --omit=dev && rm .npmrc
+RUN npm install --omit=dev && rm .npmrc
 
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY .npmrc package*.json ./
 COPY tsconfig.json ./
-RUN npm ci && rm .npmrc
+RUN npm install && rm .npmrc
 COPY src/ ./src/
 COPY prisma/ ./prisma/
 RUN npx prisma generate
