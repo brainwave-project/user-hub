@@ -19,7 +19,8 @@ RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN addgroup --system --gid 1001 nodejs \
+RUN apk add --no-cache openssl \
+ && addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 appuser
 COPY --from=deps    --chown=appuser:nodejs /app/node_modules         ./node_modules
 COPY --from=builder --chown=appuser:nodejs /app/dist                 ./dist
