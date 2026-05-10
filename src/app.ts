@@ -7,10 +7,11 @@ import { setupSwagger }  from './config/swagger.js';
 import { livenessHandler }  from './health/liveness.js';
 import { readinessHandler } from './health/readiness.js';
 
-// Fallback for dev Swagger direct access (bypasses Kong).
-// In production Kong sets X-User-Id via post-function after JWT validation.
+// Fallback for Swagger direct access (bypasses Kong) in any environment.
+// Kong always sets X-User-Id via post-function for web traffic — this only
+// fires when the header is absent (i.e. direct service access without Kong).
 function injectUserId(req: Request, _res: Response, next: NextFunction) {
-  if (process.env.NODE_ENV !== 'development' || req.headers['x-user-id']) return next();
+  if (req.headers['x-user-id']) return next();
   const auth = req.headers['authorization'];
   if (!auth) return next();
   const token = auth.replace(/^[Bb]earer\s+/, '');
