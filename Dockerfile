@@ -23,6 +23,7 @@ COPY --from=builder --chown=appuser:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:nodejs /app/dist         ./dist
 COPY --chown=appuser:nodejs prisma/  ./prisma/
 COPY --chown=appuser:nodejs package.json ./
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 USER appuser
 EXPOSE 3001
 CMD ["node", "dist/index.js"]
