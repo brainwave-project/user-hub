@@ -9,6 +9,7 @@ RUN npm install --omit=dev && rm .npmrc
 
 FROM node:20-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache openssl
 COPY .npmrc package*.json ./
 COPY tsconfig.json ./
 RUN npm install && rm .npmrc
