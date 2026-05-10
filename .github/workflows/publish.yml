@@ -1,4 +1,4 @@
-name: Build & Publish to GHCR
+﻿name: Build & Publish to GHCR
 
 on:
   push:
@@ -47,6 +47,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            GITHUB_TOKEN=${{ secrets.NPM_TOKEN }}
+            NPM_TOKEN=${{ secrets.NPM_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+

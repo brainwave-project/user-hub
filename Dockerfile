@@ -1,31 +1,29 @@
-# syntax=docker/dockerfile:1.4
 # =============================================================================
 # user-hub — Multi-stage Dockerfile
-# =============================================================================
-# Build from service directory:
-#
-#   cd user-hub/
-#   docker build -t user-hub .
-#
-# @brainwave-project/core is now a published npm package (@brainwave-project/core@^1.2.0)
 # =============================================================================
 
 FROM node:20-alpine AS deps
 
-ARG GITHUB_TOKEN
+ARG NPM_TOKEN
 
 WORKDIR /app
-COPY .npmrc package*.json ./
-RUN GITHUB_TOKEN=$GITHUB_TOKEN npm ci --omit=dev
+COPY package*.json ./
+RUN echo "@brainwave-project:registry=https://npm.pkg.github.com/" > .npmrc \
+ && echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc \
+ && npm ci --omit=dev \
+ && rm .npmrc
 
 FROM node:20-alpine AS builder
 
-ARG GITHUB_TOKEN
+ARG NPM_TOKEN
 
 WORKDIR /app
-COPY .npmrc package*.json ./
+COPY package*.json ./
 COPY tsconfig.json ./
-RUN GITHUB_TOKEN=$GITHUB_TOKEN npm ci
+RUN echo "@brainwave-project:registry=https://npm.pkg.github.com/" > .npmrc \
+ && echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc \
+ && npm ci \
+ && rm .npmrc
 COPY src/ ./src/
 COPY prisma/ ./prisma/
 RUN npx prisma generate
