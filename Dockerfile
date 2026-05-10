@@ -11,19 +11,21 @@
 # =============================================================================
 
 FROM node:20-alpine AS deps
+
+ARG GITHUB_TOKEN
+
 WORKDIR /app
 COPY .npmrc package*.json ./
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    export GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) && \
-    npm ci --omit=dev
+RUN GITHUB_TOKEN=$GITHUB_TOKEN npm ci --omit=dev
 
 FROM node:20-alpine AS builder
+
+ARG GITHUB_TOKEN
+
 WORKDIR /app
 COPY .npmrc package*.json ./
 COPY tsconfig.json ./
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    export GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) && \
-    npm ci
+RUN GITHUB_TOKEN=$GITHUB_TOKEN npm ci
 COPY src/ ./src/
 COPY prisma/ ./prisma/
 RUN npx prisma generate
