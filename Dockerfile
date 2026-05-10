@@ -11,12 +11,12 @@
 
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package*.json ./
+COPY .npmrc package*.json ./
 RUN npm ci --omit=dev
 
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
+COPY .npmrc package*.json ./
 COPY tsconfig.json ./
 RUN npm ci
 COPY src/ ./src/
