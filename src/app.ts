@@ -7,8 +7,8 @@ import { setupSwagger }  from './config/swagger.js';
 import { livenessHandler }  from './health/liveness.js';
 import { readinessHandler } from './health/readiness.js';
 
-function devInjectUserId(req: Request, _res: Response, next: NextFunction) {
-  if (process.env.NODE_ENV !== 'development' || req.headers['x-user-id']) return next();
+function injectUserId(req: Request, _res: Response, next: NextFunction) {
+  if (req.headers['x-user-id']) return next();
   const auth = req.headers['authorization'];
   if (!auth) return next();
   const token = auth.replace(/^[Bb]earer\s+/, '');
@@ -27,7 +27,7 @@ export function createApp() {
   app.use(express.json());
   app.use(correlationId());
   app.use(requestLogger(logger));
-  app.use(devInjectUserId);
+  app.use(injectUserId);
 
   // Health probes — no auth, bypassed by Kong
   app.get('/health/live',  livenessHandler);
