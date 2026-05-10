@@ -3,27 +3,15 @@
 # =============================================================================
 
 FROM node:20-alpine AS deps
-
-ARG NPM_TOKEN
-
 WORKDIR /app
-COPY package*.json ./
-RUN echo "@brainwave-project:registry=https://npm.pkg.github.com/" > .npmrc \
- && echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc \
- && npm ci --omit=dev \
- && rm .npmrc
+COPY .npmrc package*.json ./
+RUN npm ci --omit=dev && rm .npmrc
 
 FROM node:20-alpine AS builder
-
-ARG NPM_TOKEN
-
 WORKDIR /app
-COPY package*.json ./
+COPY .npmrc package*.json ./
 COPY tsconfig.json ./
-RUN echo "@brainwave-project:registry=https://npm.pkg.github.com/" > .npmrc \
- && echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc \
- && npm ci \
- && rm .npmrc
+RUN npm ci && rm .npmrc
 COPY src/ ./src/
 COPY prisma/ ./prisma/
 RUN npx prisma generate
