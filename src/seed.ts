@@ -80,16 +80,20 @@ async function main() {
     const platformRoles = await getUserRealmRoles(token, kc.id);
     const fullName = [kc.firstName, kc.lastName].filter(Boolean).join(' ') || null;
 
-    const user = await prisma.user.upsert({
-      where:  { keycloakId: kc.id },
-      update: { email: kc.email, fullName, accountStatus: 'active' },
-      create: {
-        keycloakId:    kc.id,
-        email:         kc.email,
-        fullName,
-        accountStatus: 'active',
-      },
+    // Upsert by email first (handles the case where the same user was previously
+    // inserted with a different keycloakId), then fall back to keycloakId.
+    const existing = await prisma.user.findFirst({
+      where: { OR: [{ keycloakId: kc.id }, { email: kc.email }] },
     });
+
+    const user = existing
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data:  { keycloakId: kc.id, email: kc.email, fullName, accountStatus: 'active' },
+        })
+      : await prisma.user.create({
+          data: { keycloakId: kc.id, email: kc.email, fullName, accountStatus: 'active' },
+        });
 
     if (platformRoles.length > 0) {
       const roleRows = await prisma.role.findMany({
