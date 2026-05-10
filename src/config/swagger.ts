@@ -10,8 +10,22 @@ const options: swaggerJSDoc.Options = {
       version:     '1.0.0',
       description: 'User lifecycle, account state machine, and role management.',
     },
-    servers: [{ url: '/api', description: 'UserHub via Kong' }],
+    servers: [
+      { url: 'http://localhost:3001', description: 'Direct (dev)' },
+      { url: 'http://localhost:8000', description: 'Via Kong (dev)' },
+    ],
     tags: [{ name: 'Users', description: 'User management endpoints' }],
+    components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Keycloak JWT. Use "Direct (dev)" server — middleware injects X-User-Id from sub claim.',
+        },
+      },
+    },
+    security: [{ BearerAuth: [] }],
   },
   // Scan handlers — JSDoc @swagger blocks live here
   apis: ['./src/transport/http/handlers/*.ts', './src/transport/http/router.ts'],

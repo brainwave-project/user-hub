@@ -1,4 +1,5 @@
 import express from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { correlationId, requestLogger, errorHandler } from '@brainwave-project/core';
 import { logger } from './observability/logger.js';
 import { createRouter } from './transport/http/router.js';
@@ -6,12 +7,27 @@ import { setupSwagger }  from './config/swagger.js';
 import { livenessHandler }  from './health/liveness.js';
 import { readinessHandler } from './health/readiness.js';
 
+function devInjectUserId(req: Request, _res: Response, next: NextFunction) {
+  if (process.env.NODE_ENV !== 'development' || req.headers['x-user-id']) return next();
+  const auth = req.headers['authorization'];
+  if (!auth) return next();
+  const token = auth.replace(/^[Bb]earer\s+/, '');
+  const parts = token.split('.');
+  if (parts.length !== 3) return next();
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    if (payload.sub) req.headers['x-user-id'] = payload.sub;
+  } catch { /* ignore */ }
+  next();
+}
+
 export function createApp() {
   const app = express();
 
   app.use(express.json());
   app.use(correlationId());
   app.use(requestLogger(logger));
+  app.use(devInjectUserId);
 
   // Health probes — no auth, bypassed by Kong
   app.get('/health/live',  livenessHandler);

@@ -11,6 +11,7 @@ export interface IUserRepository {
   findById(id: string): Promise<User | null>;
   findByKeycloakId(keycloakId: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
+  list(opts: { limit: number; offset: number; status?: AccountStatus }): Promise<{ items: User[]; total: number }>;
 
   create(input: CreateUserInput): Promise<User>;
 

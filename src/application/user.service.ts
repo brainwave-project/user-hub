@@ -22,9 +22,16 @@ export class UserService {
   // ---------------------------------------------------------------------------
 
   async getUser(id: string): Promise<User> {
-    const user = await this.repo.findById(id);
+    const isNumeric = /^\d+$/.test(id);
+    const user = isNumeric
+      ? await this.repo.findById(id)
+      : await this.repo.findByKeycloakId(id);
     if (!user) throw AppError.notFound('User', id);
     return user;
+  }
+
+  async listUsers(opts: { limit: number; offset: number; status?: AccountStatus }): Promise<{ items: User[]; total: number }> {
+    return this.repo.list(opts);
   }
 
   // ---------------------------------------------------------------------------

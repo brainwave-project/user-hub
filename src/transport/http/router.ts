@@ -14,23 +14,7 @@ export function createRouter(): Router {
   const service  = new UserService(repo);
   const handlers = createUserHandlers(service);
 
-  /**
-   * @swagger
-   * /users:
-   *   post:
-   *     $ref: '#/paths/~1api~1users'
-   * /users/{id}:
-   *   get:
-   *     $ref: '#/paths/~1api~1users~1{id}'
-   *   delete:
-   *     $ref: '#/paths/~1api~1users~1{id}'
-   * /users/{id}/status:
-   *   patch:
-   *     $ref: '#/paths/~1api~1users~1{id}~1status'
-   * /users/{id}/roles:
-   *   patch:
-   *     $ref: '#/paths/~1api~1users~1{id}~1roles'
-   */
+  router.get   ('/',            handlers.listUsers);
   router.post  ('/',           handlers.createUser);
   router.get   ('/:id',        handlers.getUser);
   router.patch ('/:id/status', handlers.updateStatus);

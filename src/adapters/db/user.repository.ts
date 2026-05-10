@@ -77,6 +77,15 @@ export class UserRepository implements IUserRepository {
     return row ? mapUser(row) : null;
   }
 
+  async list(opts: { limit: number; offset: number; status?: AccountStatus }): Promise<{ items: User[]; total: number }> {
+    const where = opts.status ? { accountStatus: opts.status } : {};
+    const [rows, total] = await Promise.all([
+      prisma.user.findMany({ where, include: INCLUDE_ROLES, take: opts.limit, skip: opts.offset, orderBy: { id: 'asc' } }),
+      prisma.user.count({ where }),
+    ]);
+    return { items: rows.map(mapUser), total };
+  }
+
   /**
    * Creates the user record and the user.created event in one transaction.
    * Atomicity guarantees: if DB commit fails, the event is also rolled back.

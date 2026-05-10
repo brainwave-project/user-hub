@@ -9,6 +9,12 @@ import { AppError } from '@brainwave-project/core';
 // Zod schemas
 // ---------------------------------------------------------------------------
 
+const ListQuerySchema = z.object({
+  limit:  z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+  status: z.nativeEnum(AccountStatus).optional(),
+});
+
 const CreateUserSchema = z.object({
   keycloakId: z.string().uuid('keycloakId must be a UUID'),
   email:      z.string().email('email must be a valid email address'),
@@ -88,6 +94,53 @@ const AssignRolesSchema = z.object({
  */
 export function createUserHandlers(service: UserService) {
   return {
+
+    /**
+     * @swagger
+     * /api/users:
+     *   get:
+     *     summary: List users (paginated)
+     *     tags: [Users]
+     *     security: [{ BearerAuth: [] }]
+     *     parameters:
+     *       - in: query
+     *         name: limit
+     *         schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+     *       - in: query
+     *         name: offset
+     *         schema: { type: integer, default: 0, minimum: 0 }
+     *       - in: query
+     *         name: status
+     *         schema:
+     *           type: string
+     *           enum: [pending_identity, active, suspended, disabled, failed]
+     *     responses:
+     *       200:
+     *         description: Paginated user list
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 items:
+     *                   type: array
+     *                   items: { $ref: '#/components/schemas/User' }
+     *                 total:  { type: integer }
+     *                 limit:  { type: integer }
+     *                 offset: { type: integer }
+     */
+    listUsers: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      try {
+        const parsed = ListQuerySchema.safeParse(req.query);
+        if (!parsed.success) {
+          next(AppError.validationError('Invalid query params', { issues: parsed.error.issues }));
+          return;
+        }
+        const { limit, offset, status } = parsed.data;
+        const result = await service.listUsers({ limit, offset, status });
+        res.status(200).json({ items: result.items, total: result.total, limit, offset });
+      } catch (err) { next(err); }
+    },
 
     /**
      * @swagger
