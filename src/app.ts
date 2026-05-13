@@ -6,6 +6,7 @@ import { createRouter } from './transport/http/router.js';
 import { setupSwagger }  from './config/swagger.js';
 import { livenessHandler }  from './health/liveness.js';
 import { readinessHandler } from './health/readiness.js';
+import { metricsMiddleware, getMetrics, register } from './observability/metrics.js';
 
 // Fallback for Swagger direct access (bypasses Kong) in any environment.
 // Kong always sets X-User-Id via post-function for web traffic — this only
@@ -28,6 +29,7 @@ export function createApp() {
   const app = express();
 
   app.use(express.json());
+  app.use(metricsMiddleware);
   app.use(correlationId());
   app.use(requestLogger(logger));
   app.use(injectUserId);
@@ -35,6 +37,16 @@ export function createApp() {
   // Health probes — no auth, bypassed by Kong
   app.get('/health/live',  livenessHandler);
   app.get('/health/ready', (req, res) => readinessHandler(req, res));
+
+  // Prometheus metrics scrape endpoint
+  app.get('/metrics', async (_req, res) => {
+    try {
+      res.set('Content-Type', register.contentType);
+      res.send(await getMetrics());
+    } catch (err) {
+      res.status(500).send(String(err));
+    }
+  });
 
   // API routes — JWT validated at Kong, X-User-Id header injected
   app.use('/api/users', createRouter());
