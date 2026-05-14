@@ -1,25 +1,13 @@
 # =============================================================================
 # user-hub — Multi-stage Dockerfile
-#
-# Build context must include a `core/` directory (sibling @brainwave-project/core
-# checkout). CI checks out brainwave-project/core into ./core before docker build.
 # =============================================================================
 
 FROM node:20-alpine AS builder
-RUN apk add --no-cache openssl
-
-# --- Shared library (@brainwave-project/core) --------------------------------
-WORKDIR /core
-COPY core/package.json core/package-lock.json ./
-COPY core/tsconfig.json ./
-COPY core/src ./src/
-RUN npm ci && npm run build
-
-# --- user-hub ---------------------------------------------------------------
 WORKDIR /app
-COPY package.json package-lock.json ./
+RUN apk add --no-cache openssl
+COPY .npmrc package*.json ./
 COPY tsconfig.json ./
-RUN npm ci
+RUN npm install && rm .npmrc
 COPY src/ ./src/
 COPY prisma/ ./prisma/
 RUN npx prisma generate
@@ -33,7 +21,6 @@ RUN apk add --no-cache openssl \
  && adduser  --system --uid 1001 appuser
 COPY --from=builder --chown=appuser:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:nodejs /app/dist         ./dist
-COPY --from=builder --chown=appuser:nodejs /core            /core
 COPY --chown=appuser:nodejs prisma/  ./prisma/
 COPY --chown=appuser:nodejs package.json ./
 ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
