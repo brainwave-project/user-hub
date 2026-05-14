@@ -4,6 +4,12 @@ import type { UserService } from '../../../application/user.service.js';
 import { AccountStatus } from '../../../domain/user.js';
 import { Role } from '../../../domain/role.js';
 import { AppError } from '@brainwave-project/core';
+import {
+  emitUserCreated,
+  emitUserStatusChanged,
+  emitUserRolesAssigned,
+  emitUserDeleted,
+} from '../../../events/emitter.js';
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -215,6 +221,10 @@ export function createUserHandlers(service: UserService) {
           return;
         }
         const user = await service.createUser(parsed.data);
+        const actorId = (req.headers['x-user-id'] as string | undefined) ?? parsed.data.keycloakId;
+        emitUserCreated(actorId, String(user.id), parsed.data.email, {
+          correlationId: req.headers['x-correlation-id'] as string,
+        });
         res.status(201).json(user);
       } catch (err) {
         next(err);
@@ -269,7 +279,14 @@ export function createUserHandlers(service: UserService) {
           next(AppError.validationError('Invalid status', { issues: parsed.error.issues }));
           return;
         }
+        const prevUser = await service.getUser(req.params['id']!).catch(() => null);
         const user = await service.transitionStatus(req.params['id']!, parsed.data.status as AccountStatus);
+        const actorId = (req.headers['x-user-id'] as string | undefined) ?? 'system';
+        emitUserStatusChanged(actorId, req.params['id']!, {
+          fromStatus:    prevUser?.accountStatus,
+          toStatus:      parsed.data.status,
+          correlationId: req.headers['x-correlation-id'] as string,
+        });
         res.status(200).json(user);
       } catch (err) {
         next(err);
@@ -306,6 +323,10 @@ export function createUserHandlers(service: UserService) {
     deleteUser: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         const user = await service.deleteUser(req.params['id']!);
+        const actorId = (req.headers['x-user-id'] as string | undefined) ?? 'system';
+        emitUserDeleted(actorId, req.params['id']!, {
+          correlationId: req.headers['x-correlation-id'] as string,
+        });
         res.status(200).json(user);
       } catch (err) {
         next(err);
@@ -350,6 +371,11 @@ export function createUserHandlers(service: UserService) {
           return;
         }
         const user = await service.assignRoles(req.params['id']!, parsed.data.roles);
+        const actorId = (req.headers['x-user-id'] as string | undefined) ?? 'system';
+        emitUserRolesAssigned(actorId, req.params['id']!, {
+          roles:         parsed.data.roles,
+          correlationId: req.headers['x-correlation-id'] as string,
+        });
         res.status(200).json(user);
       } catch (err) {
         next(err);

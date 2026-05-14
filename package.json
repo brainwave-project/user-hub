@@ -20,8 +20,9 @@
     "seed": "node dist/seed.js"
   },
   "dependencies": {
-    "@brainwave-project/core": "^1.2.0",
+    "@brainwave-project/core": "file:../core",
     "@grpc/grpc-js": "^1.12.4",
+    "kafkajs": "^2.2.4",
     "@grpc/proto-loader": "^0.7.13",
     "@prisma/client": "^5.14.0",
     "prisma": "^5.14.0",
