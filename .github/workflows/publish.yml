@@ -17,13 +17,15 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout
+      - name: Checkout user-hub
         uses: actions/checkout@v4
 
-      - name: Create .npmrc with auth token
-        run: |
-          echo "@brainwave-project:registry=https://npm.pkg.github.com/" > .npmrc
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_TOKEN }}" >> .npmrc
+      # package.json depends on file:../core — Docker resolves that as /core when WORKDIR is /app
+      - name: Checkout core (shared library)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/core
+          path: core
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

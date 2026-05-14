@@ -46,7 +46,10 @@ npm run db:studio    # Open Prisma Studio
 
 ## Docker
 
+The image build expects a `core/` directory in the build context (the `@brainwave-project/core` package). CI checks out [`brainwave-project/core`](https://github.com/brainwave-project/core) into `./core` automatically. For a local image build from this repo alone, clone core next to the files that `docker` sends as context, for example:
+
 ```bash
+git clone https://github.com/brainwave-project/core.git core
 docker build -t user-hub .
 docker run -p 3001:3001 --env-file .env user-hub
 ```
