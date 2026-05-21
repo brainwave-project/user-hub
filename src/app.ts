@@ -63,7 +63,8 @@ export function createApp() {
   });
 
   // API routes — JWT validated at Kong, X-User-Id header injected
-  app.use('/api/users', createRouter());
+  // Router handles /users, /roles, and /permissions under /api
+  app.use('/api', createRouter());
 
   // Swagger UI at /api/docs
   setupSwagger(app);

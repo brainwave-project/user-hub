@@ -1,5 +1,6 @@
 /**
- * Dev seed — mirrors Keycloak realm users into user-hub's database.
+ * Dev seed — mirrors Keycloak realm users into user-hub's database and
+ * seeds the permission catalogue + default role-permission assignments.
  *
  * Queries Keycloak Admin API to discover user IDs and realm roles, then
  * upserts each user + assigns matching platform roles (ADMIN / EDITOR / VIEWER).
@@ -9,6 +10,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { PERMISSION_CATALOGUE, DEFAULT_ROLE_PERMISSIONS } from './domain/permission.js';
 
 const prisma = new PrismaClient();
 
@@ -64,7 +66,48 @@ async function getUserRealmRoles(token: string, userId: string): Promise<string[
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Seed permissions + role-permission assignments
+// ---------------------------------------------------------------------------
+
+async function seedPermissions() {
+  console.log('\n── Seeding permissions catalogue ──');
+
+  for (const perm of PERMISSION_CATALOGUE) {
+    await prisma.permission.upsert({
+      where:  { name: perm.name },
+      update: { description: perm.description, resource: perm.resource, action: perm.action },
+      create: { name: perm.name, description: perm.description, resource: perm.resource, action: perm.action },
+    });
+    console.log(`  ✔ permission: ${perm.name}`);
+  }
+
+  console.log('\n── Seeding role-permission assignments ──');
+
+  for (const [roleName, permNames] of Object.entries(DEFAULT_ROLE_PERMISSIONS)) {
+    const role = await prisma.role.findUnique({ where: { name: roleName } });
+    if (!role) {
+      console.warn(`  ⚠ role ${roleName} not found — skipping`);
+      continue;
+    }
+
+    const perms = await prisma.permission.findMany({ where: { name: { in: permNames } } });
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+    await prisma.rolePermission.createMany({
+      data:           perms.map(p => ({ roleId: role.id, permissionId: p.id })),
+      skipDuplicates: true,
+    });
+    console.log(`  ✔ ${roleName.padEnd(8)} → [${permNames.join(', ')}]`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 async function main() {
+  // Seed permissions first (users depend on roles, roles depend on permissions)
+  await seedPermissions();
+
+  console.log('\n── Seeding users from Keycloak ──');
   console.log('Connecting to Keycloak…');
   const token = await getAdminToken();
 
