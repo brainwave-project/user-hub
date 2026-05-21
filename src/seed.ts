@@ -103,10 +103,7 @@ async function seedPermissions() {
 
 // ---------------------------------------------------------------------------
 
-async function main() {
-  // Seed permissions first (users depend on roles, roles depend on permissions)
-  await seedPermissions();
-
+async function seedUsersFromKeycloak() {
   console.log('\n── Seeding users from Keycloak ──');
   console.log('Connecting to Keycloak…');
   const token = await getAdminToken();
@@ -151,6 +148,22 @@ async function main() {
     }
 
     console.log(`✔ ${kc.username.padEnd(15)} keycloakId=${kc.id}  roles=[${platformRoles.join(', ')}]`);
+  }
+
+  console.log('\nKeycloak user sync complete.');
+}
+
+async function main() {
+  // Step 1 — always seed permissions (pure DB, no external deps)
+  await seedPermissions();
+
+  // Step 2 — optionally sync users from Keycloak (non-fatal if unavailable)
+  try {
+    await seedUsersFromKeycloak();
+  } catch (err) {
+    console.warn('\n⚠  Keycloak user sync skipped:', (err as Error).message);
+    console.warn('   This is fine in CI or when Keycloak is not running.');
+    console.warn('   Run "npx prisma db seed" again once Keycloak is up to sync users.');
   }
 
   console.log('\nSeed complete.');
