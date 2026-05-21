@@ -15,11 +15,12 @@ export function createRouter(): Router {
   const handlers = createUserHandlers(service);
 
   router.get   ('/',            handlers.listUsers);
-  router.post  ('/',           handlers.createUser);
-  router.get   ('/:id',        handlers.getUser);
-  router.patch ('/:id/status', handlers.updateStatus);
-  router.patch ('/:id/roles',  handlers.assignRoles);
-  router.delete('/:id',        handlers.deleteUser);
+  router.post  ('/',            handlers.createUser);
+  router.post  ('/admin',       handlers.adminCreateUser);   // admin-initiated create
+  router.get   ('/:id',         handlers.getUser);
+  router.patch ('/:id/status',  handlers.updateStatus);
+  router.patch ('/:id/roles',   handlers.assignRoles);
+  router.delete('/:id',         handlers.deleteUser);
 
   return router;
 }

@@ -8,6 +8,19 @@ import {
   DuplicateEmailError,
   DuplicateKeycloakIdError,
 } from '../errors/user.errors.js';
+import {
+  createKeycloakUser,
+  deleteKeycloakUser,
+} from '../adapters/keycloak/admin.client.js';
+
+/** Input for the admin-initiated create flow (no keycloakId required). */
+export interface AdminCreateUserInput {
+  email:        string;
+  fullName?:    string;
+  displayName?: string;
+  password:     string;
+  roles:        Role[];
+}
 
 /**
  * UserService — application layer.
@@ -51,7 +64,45 @@ export class UserService {
     if (byKeycloak) throw new DuplicateKeycloakIdError(input.keycloakId);
     if (byEmail)    throw new DuplicateEmailError(input.email);
 
-    return this.repo.create(input);  // create + user.created event are atomic
+    return this.repo.create(input);
+  }
+
+  /**
+   * Admin-initiated user creation flow:
+   *   1. Create the identity in Keycloak (gets keycloakId back).
+   *   2. Create the local DB record with the returned keycloakId.
+   *   3. Rollback the Keycloak user if the DB write fails.
+   *
+   * The user is created as ACTIVE immediately (admin has verified the identity).
+   * The initial password is marked temporary so the user must reset it on first login.
+   */
+  async adminCreateUser(input: AdminCreateUserInput): Promise<User> {
+    const existing = await this.repo.findByEmail(input.email);
+    if (existing) throw new DuplicateEmailError(input.email);
+
+    // Step 1 — provision in Keycloak
+    const keycloakId = await createKeycloakUser({
+      email:     input.email,
+      firstName: input.fullName,
+      password:  input.password,
+      temporary: true,
+    });
+
+    // Step 2 — persist locally (with rollback guard)
+    try {
+      return await this.repo.create({
+        keycloakId,
+        email:         input.email,
+        fullName:      input.fullName,
+        displayName:   input.displayName,
+        initialStatus: AccountStatus.ACTIVE,
+        initialRoles:  input.roles,
+      });
+    } catch (err) {
+      // Best-effort rollback — remove the orphaned Keycloak user
+      await deleteKeycloakUser(keycloakId).catch(() => {});
+      throw err;
+    }
   }
 
   /**

@@ -29,17 +29,25 @@ export const ALLOWED_TRANSITIONS: Readonly<Record<AccountStatus, AccountStatus[]
 
 /** Core user aggregate. Maps 1:1 with user_management.users. */
 export interface User {
-  id:            string;        // internal UUID (user_management.users.id)
+  id:            string;
   keycloakId:    string;        // sub claim from Keycloak JWT
   email:         string;
+  fullName:      string | null;
+  displayName:   string | null;
   accountStatus: AccountStatus;
   roles:         Role[];
   createdAt:     Date;
   updatedAt:     Date;
 }
 
-/** Subset used when creating a new user after Keycloak webhook fires. */
+/** Used when creating a new user (admin-initiated or Keycloak webhook). */
 export interface CreateUserInput {
-  keycloakId: string;
-  email:      string;
+  keycloakId:    string;
+  email:         string;
+  fullName?:     string;
+  displayName?:  string;
+  /** Defaults to pending_identity when omitted (webhook flow). */
+  initialStatus?: AccountStatus;
+  /** Roles to assign immediately. Defaults to none. */
+  initialRoles?:  Role[];
 }

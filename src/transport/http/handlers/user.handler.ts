@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
 import type { UserService } from '../../../application/user.service.js';
+import type { AdminCreateUserInput } from '../../../application/user.service.js';
 import { AccountStatus } from '../../../domain/user.js';
 import { Role } from '../../../domain/role.js';
 import { AppError } from '@brainwave-project/core';
@@ -36,6 +37,15 @@ const StatusSchema = z.object({
 const AssignRolesSchema = z.object({
   roles: z.array(z.nativeEnum(Role), { required_error: 'roles array is required' })
            .min(1, 'at least one role is required'),
+});
+
+const AdminCreateUserSchema = z.object({
+  email:       z.string().email('email must be a valid email address'),
+  fullName:    z.string().min(1).max(255).optional(),
+  displayName: z.string().min(1).max(100).optional(),
+  password:    z.string().min(8, 'password must be at least 8 characters'),
+  roles:       z.array(z.nativeEnum(Role), { required_error: 'roles array is required' })
+                .min(1, 'at least one role is required'),
 });
 
 // ---------------------------------------------------------------------------
@@ -363,6 +373,73 @@ export function createUserHandlers(service: UserService) {
      *           application/json:
      *             schema: { $ref: '#/components/schemas/ErrorResponse' }
      */
+    /**
+     * @swagger
+     * /api/users/admin:
+     *   post:
+     *     summary: Admin-initiated user creation (provisions identity in Keycloak + DB)
+     *     description: >
+     *       Creates the Keycloak identity first, then persists the local DB record.
+     *       If the DB write fails, the Keycloak user is rolled back.
+     *       The user starts ACTIVE with a temporary password they must reset on first login.
+     *     tags: [Users]
+     *     security: [{ BearerAuth: [] }]
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required: [email, password, roles]
+     *             properties:
+     *               email:       { type: string, format: email }
+     *               fullName:    { type: string, maxLength: 255 }
+     *               displayName: { type: string, maxLength: 100 }
+     *               password:    { type: string, minLength: 8 }
+     *               roles:
+     *                 type: array
+     *                 items: { type: string, enum: [ADMIN, EDITOR, VIEWER] }
+     *           example:
+     *             email: "newuser@brainwave.io"
+     *             fullName: "New User"
+     *             password: "Temp1234!"
+     *             roles: ["VIEWER"]
+     *     responses:
+     *       201:
+     *         description: User created and immediately ACTIVE
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/User' }
+     *       409:
+     *         description: Email already exists
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     *       422:
+     *         description: Validation error
+     *         content:
+     *           application/json:
+     *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+     */
+    adminCreateUser: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      try {
+        const parsed = AdminCreateUserSchema.safeParse(req.body);
+        if (!parsed.success) {
+          next(AppError.validationError('Invalid request body', { issues: parsed.error.issues }));
+          return;
+        }
+        const input: AdminCreateUserInput = parsed.data;
+        const user = await service.adminCreateUser(input);
+        const actorId = (req.headers['x-user-id'] as string | undefined) ?? 'admin';
+        emitUserCreated(actorId, String(user.id), input.email, {
+          correlationId: req.headers['x-correlation-id'] as string,
+        });
+        res.status(201).json(user);
+      } catch (err) {
+        next(err);
+      }
+    },
+
     assignRoles: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         const parsed = AssignRolesSchema.safeParse(req.body);

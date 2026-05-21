@@ -20,6 +20,8 @@ function mapUser(row: UserWithRoles): User {
     id:            row.id.toString(),
     keycloakId:    row.keycloakId,
     email:         row.email,
+    fullName:      row.fullName ?? null,
+    displayName:   row.displayName ?? null,
     accountStatus: row.accountStatus as AccountStatus,
     roles:         row.userRoles.map(ur => ur.role.name as Role),
     createdAt:     row.createdAt,
@@ -92,11 +94,26 @@ export class UserRepository implements IUserRepository {
    */
   async create(input: CreateUserInput): Promise<User> {
     const row = await prisma.$transaction(async (tx) => {
+      // Resolve initial roles → DB IDs if provided
+      const roleRows = input.initialRoles?.length
+        ? await tx.role.findMany({
+            where:  { name: { in: input.initialRoles } },
+            select: { id: true },
+          })
+        : [];
+
       const user = await tx.user.create({
         data: {
           keycloakId:    input.keycloakId,
           email:         input.email.toLowerCase(),
-          accountStatus: 'pending_identity',
+          fullName:      input.fullName   ?? null,
+          displayName:   input.displayName ?? null,
+          accountStatus: input.initialStatus ?? 'pending_identity',
+          ...(roleRows.length && {
+            userRoles: {
+              create: roleRows.map(r => ({ roleId: r.id })),
+            },
+          }),
         },
         include: INCLUDE_ROLES,
       });
@@ -106,7 +123,10 @@ export class UserRepository implements IUserRepository {
           eventType:  'user.created',
           userId:     user.id,
           keycloakId: user.keycloakId,
-          payload:    { email: user.email } satisfies Prisma.InputJsonValue,
+          payload: {
+            email:    user.email,
+            fullName: user.fullName ?? undefined,
+          } satisfies Prisma.InputJsonValue,
         },
       });
 
