@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package authhub;
+
+option js_package = "authhub";
+
+// Service for service-to-service token validation.
+service TokenValidation {
+  // Validates an access token and returns identity and claims (signature, expiry, optional roles).
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+  repeated string required_roles = 2;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string sub = 2;
+  repeated string roles = 3;
+  int64 exp = 4;
+  int64 iat = 5;
+  string realm = 6;
+  string error_code = 7;
+  string error_message = 8;
+}
